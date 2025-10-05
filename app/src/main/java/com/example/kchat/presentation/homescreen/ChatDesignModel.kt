@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 
 data class ChatDesignModel(
     val name: String? = null,
-    val phoneNumber: String? = null,
+    val email: String? = null,
     val image: Int? = null, // still keep for drawable IDs
     val userId: String? = null,
     val time: String? = null,

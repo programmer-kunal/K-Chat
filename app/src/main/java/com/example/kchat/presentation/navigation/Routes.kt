@@ -34,8 +34,8 @@ sealed class Routes {
 
     @Serializable
     data object ChatScreen:Routes(){
-        const val route="chat_screen/{phoneNumber}"
-        fun createRoutes(phoneNumber:String)="chat_screen/$phoneNumber"
+        const val route = "chat_screen/{email}"
+        fun createRoutes(email: String) = "chat_screen/$email"
 
     }
 

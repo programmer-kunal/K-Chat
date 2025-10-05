@@ -15,21 +15,35 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.kchat.R
 import com.example.kchat.presentation.navigation.Routes
+import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun WelcomeScreen(navHostController: NavHostController) {
+
+    // 🔹 Check if user already logged in
+    LaunchedEffect(Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            // User is already logged in → go to HomeScreen (change if you use another route)
+            navHostController.navigate(Routes.HomeScreen) {
+                popUpTo(Routes.WelcomeScreen) { inclusive = true }
+            }
+        }
+    }
+
+    // 🔹 Show UI only if user not logged in
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -50,32 +64,30 @@ fun WelcomeScreen(navHostController: NavHostController) {
         )
         Spacer(modifier = Modifier.height(24.dp))
         Row {
-            Text("Read Our",color= Color.Gray)
+            Text("Read Our", color = Color.Gray)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Privacy Policy",color= colorResource(id = R.color.light_blue))
+            Text("Privacy Policy", color = colorResource(id = R.color.light_blue))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Tap Agree and continue to ",color= Color.Gray)
+            Text("Tap Agree and continue to ", color = Color.Gray)
         }
 
         Row {
-            Text("accept the ",color= Color.Gray)
+            Text("accept the ", color = Color.Gray)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Terms of Services",color= colorResource(id = R.color.light_blue))
+            Text("Terms of Services", color = colorResource(id = R.color.light_blue))
         }
-          Spacer(modifier = Modifier.height(24.dp))
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = {navHostController.navigate(Routes.UserRegistrationScreen)
-
+            onClick = {
+                navHostController.navigate(Routes.UserRegistrationScreen)
             },
             modifier = Modifier.size(280.dp, 43.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colorResource(id = R.color.light_blue))
         ) {
-
-            Text("Agree and Continue", fontSize = 16.sp)}
-
+            Text("Agree and Continue", fontSize = 16.sp)
+        }
     }
-
-
 }
