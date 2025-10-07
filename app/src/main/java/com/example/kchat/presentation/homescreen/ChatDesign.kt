@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,7 +23,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberImagePainter
@@ -34,48 +34,64 @@ fun ChatDesign(
     chatDesignModel: ChatDesignModel,
     onClick: () -> Unit,
     baseViewModel: BaseViewModel
-
 ) {
-    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
 
-        val profileImage = chatDesignModel?.profileImage
-        val bitmap= remember{
-             profileImage?.let{ baseViewModel.base64ToBitmap(it) }
+        // Use either decoded Bitmap from profileBitmap or convert profileImage string
+        val bitmap = remember(chatDesignModel.profileBitmap, chatDesignModel.profileImage) {
+            chatDesignModel.profileBitmap
+                ?: chatDesignModel.profileImage?.let { baseViewModel.base64ToBitmap(it) }
         }
-        Image(
-            painter =if(bitmap!=null) {
-                rememberImagePainter(bitmap)
-            }else {
-                painterResource(id = R.drawable.user_placeholder)
 
+        Image(
+            painter = if (bitmap != null) {
+                rememberImagePainter(bitmap)
+            } else {
+                painterResource(id = R.drawable.user_placeholder)
             },
             contentDescription = null,
             modifier = Modifier
                 .size(60.dp)
-                .background(color=Color.Gray)
+                .background(color = Color.Gray)
                 .clip(CircleShape),
             contentScale = ContentScale.Crop
         )
-        Spacer(modifier = Modifier.height(12.dp))
-        Column {
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text=chatDesignModel.name?:"Unknown", fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                    color=colorResource(id=R.color.light_blue)
+                Text(
+                    text = chatDesignModel.name ?: "Unknown",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colorResource(id = R.color.light_blue)
                 )
                 Text(
-                    text=chatDesignModel.time?:"--!--",
+                    text = chatDesignModel.time ?: "--:--",
                     color = Color.Gray,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-
             }
+
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = chatDesignModel.message?:"Message", color = Color.Gray, fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold)
+
+            Text(
+                text = chatDesignModel.message ?: "Message",
+                color = Color.Gray,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
-
 }
