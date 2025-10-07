@@ -1,5 +1,6 @@
 package com.example.kchat.presentation.splashscreen.homescreen
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -20,14 +22,18 @@ import com.example.kchat.presentation.navigation.Routes
 import com.example.kchat.presentation.splashscreen.bottomnavigation.BottomNavigation
 import com.example.kchat.presentation.viewmodels.BaseViewModel
 import com.google.firebase.auth.FirebaseAuth
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Composable
 fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseViewModel) {
+
+    val context = LocalContext.current
     var showPopup by remember { mutableStateOf(false) }
     val chatData by homeBaseViewModel.chatList.collectAsState()
     val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
 
-    // Load chats automatically
+    // ✅ Load chats automatically without lambda
     LaunchedEffect(currentUserEmail) {
         currentUserEmail?.let { homeBaseViewModel.loadChatList(it) }
     }
@@ -87,10 +93,13 @@ fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseView
                     ChatDesign(
                         chatDesignModel = chat,
                         onClick = {
-                            // Navigate to chat screen when chat is clicked
-                            navHostController.navigate(
-                                Routes.ChatScreen.createRoutes(chat.email ?: "unknown")
-                            )
+                            chat.email?.let { email ->
+                                // ✅ Encode email to prevent crashes
+                                val encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8.toString())
+                                navHostController.navigate("chat_screen/$encodedEmail")
+                            } ?: run {
+                                Toast.makeText(context, "User email not found", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         baseViewModel = homeBaseViewModel
                     )
