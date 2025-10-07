@@ -17,15 +17,24 @@ import java.io.InputStream
 
 class BaseViewModel : ViewModel() {
 
-    // ✅ Search user by email instead of phone number
-    fun searchUserByEmail(email: String, callBack: (ChatDesignModel?) -> Unit) {
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser == null) {
-            Log.e("BaseViewModel", "User is not authenticated")
-            callBack(null)
-            return
-        }
+    private val dataBaseReference = FirebaseDatabase.getInstance().reference
 
+    // ✅ StateFlow for chat list
+    private val _chatList = MutableStateFlow<List<ChatDesignModel>>(emptyList())
+    val chatList = _chatList.asStateFlow()
+
+    // 🔹 Update chat list manually
+    fun updateChatList(newList: List<ChatDesignModel>) {
+        _chatList.value = newList
+    }
+
+    // 🔹 Sanitize Firebase path for emails
+    private fun sanitizeEmail(email: String): String {
+        return email.replace(".", "_").replace("@", "_at_")
+    }
+
+    // 🔹 Search user by email
+    fun searchUserByEmail(email: String, callBack: (ChatDesignModel?) -> Unit) {
         val databaseReference = FirebaseDatabase.getInstance().getReference("users")
         databaseReference.orderByChild("email")
             .equalTo(email)
@@ -40,108 +49,109 @@ class BaseViewModel : ViewModel() {
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    Log.e(
-                        "BaseViewModel",
-                        "Error fetching user: ${error.message}, Details: ${error.details}"
-                    )
+                    Log.e("BaseViewModel", "Error fetching user: ${error.message}")
                     callBack(null)
                 }
             })
     }
 
-    // ✅ Get chats for a user using email
-    fun getChatForUser(userEmail: String, callBack: (List<ChatDesignModel>) -> Unit) {
-        val chatRef = FirebaseDatabase.getInstance().getReference("users/$userEmail/chats")
-        chatRef.orderByChild("userId").equalTo(userEmail)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val chatList = mutableListOf<ChatDesignModel>()
-                    for (childSnapshot in snapshot.children) {
-                        val chat = childSnapshot.getValue(ChatDesignModel::class.java)
-                        if (chat != null) chatList.add(chat)
-                    }
-                    callBack(chatList)
-                }
+    // 🔹 Load chat list for current user and update StateFlow automatically
+    fun loadChatList(currentUserEmail: String) {
+        val currentUserKey = sanitizeEmail(currentUserEmail)
+        val chatRef = dataBaseReference.child("chats").child(currentUserKey)
 
-                override fun onCancelled(error: DatabaseError) {
-                    Log.e("BaseViewModel", "Error fetching user chats: ${error.message}")
-                    callBack(emptyList())
-                }
-            })
-    }
+        chatRef.addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val chatList = mutableListOf<ChatDesignModel>()
+                if (snapshot.exists()) {
+                    snapshot.children.forEach { child ->
+                        val email = child.key ?: return@forEach
+                        val name = child.child("name").value as? String ?: "Unknown"
+                        val image = child.child("image").value as? String
+                        val profileBitmap = image?.let { decodeBase64toBitmap(it) }
 
-    private val _chatList = MutableStateFlow<List<ChatDesignModel>>(emptyList())
-    val chatList = _chatList.asStateFlow()
-
-    init {
-        loadChatData()
-    }
-
-    private fun loadChatData() {
-        val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
-        if (currentUserEmail != null) {
-            val chatRef = FirebaseDatabase.getInstance().getReference("chats")
-            chatRef.orderByChild("userId").equalTo(currentUserEmail)
-                .addValueEventListener(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        val chatList = mutableListOf<ChatDesignModel>()
-                        for (childSnapshot in snapshot.children) {
-                            val chat = childSnapshot.getValue(ChatDesignModel::class.java)
-                            if (chat != null) chatList.add(chat)
+                        fetchLastMessageForChat(currentUserEmail, email) { lastMessage, time ->
+                            chatList.add(
+                                ChatDesignModel(
+                                    name = name,
+                                    profileBitmap = profileBitmap,
+                                    message = lastMessage,
+                                    time = time,
+                                    email = email
+                                )
+                            )
+                            if (chatList.size == snapshot.childrenCount.toInt()) {
+                                // ✅ Update StateFlow directly
+                                _chatList.value = chatList
+                            }
                         }
-                        _chatList.value = chatList
                     }
-
-                    override fun onCancelled(error: DatabaseError) {
-                        Log.e("BaseViewModel", "Error fetching chat data: ${error.message}")
-                    }
-                })
-        }
-    }
-
-    fun addChat(newChat: ChatDesignModel) {
-        val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
-        if (currentUserEmail != null) {
-            val newChatRef = FirebaseDatabase.getInstance().getReference("chats").push()
-            val chatWithUser = newChat.copy(currentUserEmail)
-            newChatRef.setValue(chatWithUser)
-                .addOnSuccessListener { Log.d("BaseViewModel", "Chat added successfully to Firebase") }
-                .addOnFailureListener { exception ->
-                    Log.e("BaseViewModel", "Failed to add chat to Firebase: ${exception.message}")
+                } else {
+                    _chatList.value = emptyList()
                 }
-        } else {
-            Log.e("BaseViewModel", "Current user is not authenticated")
-        }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                _chatList.value = emptyList()
+            }
+        })
     }
 
-    private val dataBaseReference = FirebaseDatabase.getInstance().reference
+    // 🔹 Add new chat under both users (fixed)
+    fun addChat(newChat: ChatDesignModel) {
+        val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email ?: return
+        val currentUserKey = sanitizeEmail(currentUserEmail)
+        val otherUserEmail = newChat.email ?: return
+        val otherUserKey = sanitizeEmail(otherUserEmail)
 
-    // ✅ Send message with emails
+        // ✅ Add chat for current user
+        val chatForCurrent = ChatDesignModel(
+            name = newChat.name ?: "Unknown",
+            email = otherUserEmail,
+            profileBitmap = newChat.profileBitmap,
+            message = "",
+            time = ""
+        )
+        dataBaseReference.child("chats").child(currentUserKey).child(otherUserKey)
+            .setValue(chatForCurrent)
+            .addOnSuccessListener { Log.d("BaseViewModel", "Chat added for current user") }
+            .addOnFailureListener { e -> Log.e("BaseViewModel", "Error adding chat: ${e.message}") }
+
+        // ✅ Add chat for other user (with current user info)
+        val chatForOther = ChatDesignModel(
+            name = currentUserEmail, // current user is "name" for other user's chat
+            email = currentUserEmail,
+            profileBitmap = null,
+            message = "",
+            time = ""
+        )
+        dataBaseReference.child("chats").child(otherUserKey).child(currentUserKey)
+            .setValue(chatForOther)
+            .addOnSuccessListener { Log.d("BaseViewModel", "Chat added for other user") }
+    }
+
+    // 🔹 Send message
     fun sendMessage(senderEmail: String, receiverEmail: String, messageText: String) {
+        val senderKey = sanitizeEmail(senderEmail)
+        val receiverKey = sanitizeEmail(receiverEmail)
         val messageId = dataBaseReference.push().key ?: return
+
         val message = Message(
             senderPhoneNumber = senderEmail,
             message = messageText,
             timeStamp = System.currentTimeMillis()
         )
 
-        dataBaseReference.child("messages")
-            .child(senderEmail)
-            .child(receiverEmail)
-            .child(messageId)
-            .setValue(message)
-
-        dataBaseReference.child("messages")
-            .child(receiverEmail)
-            .child(senderEmail)
-            .child(messageId)
-            .setValue(message)
+        dataBaseReference.child("messages").child(senderKey).child(receiverKey).child(messageId).setValue(message)
+        dataBaseReference.child("messages").child(receiverKey).child(senderKey).child(messageId).setValue(message)
     }
 
+    // 🔹 Listen for messages
     fun getMessage(senderEmail: String, receiverEmail: String, onNewMessage: (Message) -> Unit) {
-        val messageRef = dataBaseReference.child("messages")
-            .child(senderEmail)
-            .child(receiverEmail)
+        val senderKey = sanitizeEmail(senderEmail)
+        val receiverKey = sanitizeEmail(receiverEmail)
+        val messageRef = dataBaseReference.child("messages").child(senderKey).child(receiverKey)
+
         messageRef.addChildEventListener(object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                 val message = snapshot.getValue(Message::class.java)
@@ -155,22 +165,18 @@ class BaseViewModel : ViewModel() {
         })
     }
 
-    fun fetchLastMessageForChat(
-        senderEmail: String,
-        receiverEmail: String,
-        onLastMessageFetched: (String, String) -> Unit
-    ) {
-        val chatRef = dataBaseReference.child("messages")
-            .child(senderEmail)
-            .child(receiverEmail)
+    // 🔹 Fetch last message
+    fun fetchLastMessageForChat(senderEmail: String, receiverEmail: String, onLastMessageFetched: (String, String) -> Unit) {
+        val senderKey = sanitizeEmail(senderEmail)
+        val receiverKey = sanitizeEmail(receiverEmail)
+        val chatRef = dataBaseReference.child("messages").child(senderKey).child(receiverKey)
+
         chatRef.orderByChild("timestamp").limitToLast(1)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (snapshot.exists()) {
-                        val lastMessage =
-                            snapshot.children.firstOrNull()?.child("message")?.value as? String
-                        val timestamp =
-                            snapshot.children.firstOrNull()?.child("timestamp")?.value as? String
+                        val lastMessage = snapshot.children.firstOrNull()?.child("message")?.value as? String
+                        val timestamp = snapshot.children.firstOrNull()?.child("timestamp")?.value as? String
                         onLastMessageFetched(lastMessage ?: "No Message", timestamp ?: "--:--")
                     } else {
                         onLastMessageFetched("No Message", "--:--")
@@ -183,47 +189,7 @@ class BaseViewModel : ViewModel() {
             })
     }
 
-    fun loadChatList(
-        currentUserEmail: String,
-        onChatListLoaded: (List<ChatDesignModel>) -> Unit
-    ) {
-        val chatList = mutableListOf<ChatDesignModel>()
-        val chatRef = dataBaseReference.child("chats").child(currentUserEmail)
-        chatRef.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                if (snapshot.exists()) {
-                    snapshot.children.forEach { child ->
-                        val email = child.key ?: return@forEach
-                        val name = child.child("name").value as? String ?: "Unknown"
-                        val image = child.child("image").value as? String
-                        val profileImageBitmap = image?.let { decodeBase64toBitmap(it) }
-
-                        fetchLastMessageForChat(currentUserEmail, email) { lastMessage, time ->
-                            chatList.add(
-                                ChatDesignModel(
-                                    name = name,
-                                    profileBitmap = profileImageBitmap,
-                                    message = lastMessage,
-                                    time = time
-                                )
-                            )
-
-                            if (chatList.size == snapshot.childrenCount.toInt()) {
-                                onChatListLoaded(chatList)
-                            }
-                        }
-                    }
-                } else {
-                    onChatListLoaded(emptyList())
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                onChatListLoaded(emptyList())
-            }
-        })
-    }
-
+    // 🔹 Decode Base64 to Bitmap
     private fun decodeBase64toBitmap(base64Image: String): Bitmap? {
         return try {
             val decodedByte = Base64.decode(base64Image, Base64.DEFAULT)

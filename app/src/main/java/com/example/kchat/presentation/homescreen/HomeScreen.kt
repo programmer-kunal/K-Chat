@@ -25,14 +25,12 @@ import com.google.firebase.auth.FirebaseAuth
 fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseViewModel) {
     var showPopup by remember { mutableStateOf(false) }
     val chatData by homeBaseViewModel.chatList.collectAsState()
-    val userId = FirebaseAuth.getInstance().currentUser?.uid
-    if (userId != null) {
-        LaunchedEffect(userId) {
-            homeBaseViewModel.getChatForUser(userId) { }
-        }
-    }
+    val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
 
-    var showMenu by remember { mutableStateOf(false) }
+    // Load chats automatically
+    LaunchedEffect(currentUserEmail) {
+        currentUserEmail?.let { homeBaseViewModel.loadChatList(it) }
+    }
 
     Scaffold(
         containerColor = colorResource(id = R.color.dark_blue),
@@ -61,121 +59,14 @@ fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseView
                 }
             })
         }
-    ) {
+    ) { padding ->
         Column(
             modifier = Modifier
-                .padding(it)
+                .padding(padding)
                 .background(color = colorResource(id = R.color.dark_blue))
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            Box(modifier = Modifier.fillMaxWidth()) {
-                var isSearching by remember { mutableStateOf(false) }
-                var searchText by remember { mutableStateOf("") }
-                var showMenu by remember { mutableStateOf(false) }
-
-                if (isSearching) {
-                    TextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        placeholder = { Text(text = "Search", color = colorResource(id = R.color.light_blue)) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 16.dp)
-                            .fillMaxWidth(0.8f),
-                        colors = TextFieldDefaults.colors(
-                            unfocusedPlaceholderColor = colorResource(id = R.color.light_blue),
-                            focusedPlaceholderColor = colorResource(id = R.color.light_blue),
-                            unfocusedContainerColor = colorResource(id = R.color.dark_blue),
-                            focusedContainerColor = colorResource(id = R.color.dark_blue),
-                            unfocusedIndicatorColor = colorResource(id = R.color.light_blue),
-                            focusedIndicatorColor = colorResource(id = R.color.light_blue),
-                            unfocusedTextColor = colorResource(id = R.color.light_blue),
-                            focusedTextColor = colorResource(id = R.color.light_blue)
-                        )
-                    )
-                } else {
-                    Text(
-                        "KChat",
-                        fontSize = 28.sp,
-                        color = colorResource(id = R.color.light_blue),
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 16.dp),
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Row(modifier = Modifier.align(Alignment.CenterEnd)) {
-                        IconButton(onClick = {}) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.camera),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = colorResource(id = R.color.light_blue)
-                            )
-                        }
-                        if (isSearching) {
-                            IconButton(onClick = {
-                                isSearching = false
-                                searchText = ""
-                            }) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.cross),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = colorResource(id = R.color.light_blue)
-                                )
-                            }
-                        } else {
-                            IconButton(onClick = { isSearching = true }) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.search),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = colorResource(id = R.color.light_blue)
-                                )
-                            }
-                        }
-
-                        IconButton(onClick = { showMenu = !showMenu }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.more),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = colorResource(id = R.color.light_blue)
-                            )
-
-                            DropdownMenu(
-                                expanded = showMenu,
-                                onDismissRequest = { showMenu = false },
-                                modifier = Modifier.background(color = colorResource(id = R.color.light_blue))
-                            ) {
-                                DropdownMenuItem(text = { Text(text = "New Group", color = Color.DarkGray) }, onClick = { showMenu = false })
-                                DropdownMenuItem(text = { Text(text = "New Broadcast", color = Color.DarkGray) }, onClick = { showMenu = false })
-                                DropdownMenuItem(text = { Text(text = "Linked Devices", color = Color.DarkGray) }, onClick = { showMenu = false })
-                                DropdownMenuItem(text = { Text(text = "Starred Messages", color = Color.DarkGray) }, onClick = { showMenu = false })
-                                DropdownMenuItem(text = { Text(text = "Settings", color = Color.DarkGray) }, onClick = {
-                                    showMenu = false
-                                    navHostController.navigate(Routes.SettingScreen)
-                                })
-
-                                // 🔹 Added Logout Option Below
-                                DropdownMenuItem(
-                                    text = { Text(text = "Logout", color = Color.Red, fontWeight = FontWeight.Bold) },
-                                    onClick = {
-                                        showMenu = false
-                                        FirebaseAuth.getInstance().signOut()
-                                        navHostController.navigate(Routes.WelcomeScreen) {
-                                            popUpTo(Routes.HomeScreen) { inclusive = true } // prevent back navigation
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
+            TopBar(navHostController)
             Spacer(modifier = Modifier.height(8.dp))
             Divider()
             Spacer(modifier = Modifier.height(12.dp))
@@ -183,7 +74,10 @@ fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseView
             if (showPopup) {
                 AddUserPopup(
                     onDismiss = { showPopup = false },
-                    onUserAdd = { newUser -> homeBaseViewModel.addChat(newUser) },
+                    onUserAdd = { newUser ->
+                        homeBaseViewModel.addChat(newUser)
+                        currentUserEmail?.let { homeBaseViewModel.loadChatList(it) }
+                    },
                     baseViewModel = homeBaseViewModel
                 )
             }
@@ -193,14 +87,119 @@ fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseView
                     ChatDesign(
                         chatDesignModel = chat,
                         onClick = {
+                            // Navigate to chat screen when chat is clicked
                             navHostController.navigate(
-                                Routes.ChatScreen.createRoutes(
-                                    email = chat.email ?: "unknown"
-                                )
+                                Routes.ChatScreen.createRoutes(chat.email ?: "unknown")
                             )
                         },
                         baseViewModel = homeBaseViewModel
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TopBar(navHostController: NavHostController) {
+    var isSearching by remember { mutableStateOf(false) }
+    var searchText by remember { mutableStateOf("") }
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (isSearching) {
+            TextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                placeholder = { Text("Search", color = colorResource(id = R.color.light_blue)) },
+                singleLine = true,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 16.dp)
+                    .fillMaxWidth(0.8f),
+                colors = TextFieldDefaults.colors(
+                    unfocusedPlaceholderColor = colorResource(id = R.color.light_blue),
+                    focusedPlaceholderColor = colorResource(id = R.color.light_blue),
+                    unfocusedContainerColor = colorResource(id = R.color.dark_blue),
+                    focusedContainerColor = colorResource(id = R.color.dark_blue),
+                    unfocusedIndicatorColor = colorResource(id = R.color.light_blue),
+                    focusedIndicatorColor = colorResource(id = R.color.light_blue),
+                    unfocusedTextColor = colorResource(id = R.color.light_blue),
+                    focusedTextColor = colorResource(id = R.color.light_blue)
+                )
+            )
+        } else {
+            Text(
+                "KChat",
+                fontSize = 28.sp,
+                color = colorResource(id = R.color.light_blue),
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 16.dp),
+                fontWeight = FontWeight.Bold
+            )
+
+            Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                IconButton(onClick = {}) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.camera),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = colorResource(id = R.color.light_blue)
+                    )
+                }
+                IconButton(onClick = { isSearching = !isSearching }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.search),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = colorResource(id = R.color.light_blue)
+                    )
+                }
+
+                IconButton(onClick = { showMenu = !showMenu }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.more),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = colorResource(id = R.color.light_blue)
+                    )
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier.background(color = colorResource(id = R.color.light_blue))
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("New Group", color = Color.DarkGray) },
+                            onClick = { showMenu = false })
+                        DropdownMenuItem(
+                            text = { Text("New Broadcast", color = Color.DarkGray) },
+                            onClick = { showMenu = false })
+                        DropdownMenuItem(
+                            text = { Text("Linked Devices", color = Color.DarkGray) },
+                            onClick = { showMenu = false })
+                        DropdownMenuItem(
+                            text = { Text("Starred Messages", color = Color.DarkGray) },
+                            onClick = { showMenu = false })
+                        DropdownMenuItem(
+                            text = { Text("Settings", color = Color.DarkGray) },
+                            onClick = {
+                                showMenu = false
+                                navHostController.navigate(Routes.SettingScreen)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Logout", color = Color.Red, fontWeight = FontWeight.Bold) },
+                            onClick = {
+                                showMenu = false
+                                FirebaseAuth.getInstance().signOut()
+                                navHostController.navigate(Routes.WelcomeScreen) {
+                                    popUpTo(Routes.HomeScreen) { inclusive = true }
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -217,72 +216,60 @@ fun AddUserPopup(
     var isSearching by remember { mutableStateOf(false) }
     var userFound by remember { mutableStateOf<ChatDesignModel?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-            .background(color = colorResource(id = R.color.dark_blue))
-    ) {
-        TextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Enter Email") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            colors = TextFieldDefaults.colors(
-                unfocusedPlaceholderColor = colorResource(id = R.color.light_blue),
-                focusedPlaceholderColor = colorResource(id = R.color.light_blue),
-                unfocusedContainerColor = colorResource(id = R.color.dark_blue),
-                focusedContainerColor = colorResource(id = R.color.dark_blue),
-                unfocusedIndicatorColor = colorResource(id = R.color.light_blue),
-                focusedIndicatorColor = colorResource(id = R.color.light_blue),
-                unfocusedTextColor = colorResource(id = R.color.light_blue),
-                focusedTextColor = colorResource(id = R.color.light_blue)
-            )
-        )
-        Row {
-            Button(
-                onClick = {
-                    isSearching = true
-                    baseViewModel.searchUserByEmail(email) { user ->
-                        isSearching = false
-                        userFound = user
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Enter Email") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row {
+                    Button(
+                        onClick = {
+                            isSearching = true
+                            baseViewModel.searchUserByEmail(email) { user ->
+                                isSearching = false
+                                userFound = user
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Search")
                     }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(colorResource(R.color.light_blue))
-            ) {
-                Text(text = "Search")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(colorResource(R.color.light_blue))
-            ) {
-                Text(text = "Cancel")
-            }
-        }
-        if (isSearching) {
-            Text(text = "Searching...", color = Color.Gray)
-        }
-        userFound?.let {
-            Column {
-                Text(text = "User Found ${it.name}")
-                Button(
-                    onClick = {
-                        onUserAdd(it)
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(colorResource(R.color.light_blue))
-                ) {
-                    Text(text = "Add to Chats")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                when {
+                    isSearching -> Text("Searching...", color = Color.Gray)
+                    userFound != null -> {
+                        Text("User Found: ${userFound!!.name ?: "Unknown"}")
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(onClick = {
+                            onUserAdd(userFound!!)
+                            onDismiss()
+                        }) {
+                            Text("Add to Chats")
+                        }
+                    }
+                    else -> Text("No user found", color = Color.Gray)
                 }
             }
-        } ?: run {
-            if (!isSearching) {
-                Text(text = "No User Found With This Email", color = Color.Gray)
-            }
         }
-    }
+    )
 }
